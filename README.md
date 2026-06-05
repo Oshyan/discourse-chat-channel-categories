@@ -5,6 +5,8 @@
 ## Behavior
 
 - Adds a category chip to category-backed chat channel cards in `/chat/browse`.
+- Adds a category dropdown for filtering the currently rendered browser cards.
+- Moves the member count into the channel title row to reduce vertical card height.
 - Uses the existing `chatable.name`, `chatable.color`, and category URL data from the chat channel model.
 - Updates as the browser paginates, filters, or rerenders cards.
 - Does not add server payload fields or replace chat routes/templates.

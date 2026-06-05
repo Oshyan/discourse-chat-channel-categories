@@ -1,13 +1,46 @@
 .chat-channel-card.dcc-chat-channel-card--with-category {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title cta"
+    "description description";
+  grid-template-rows: auto 1fr;
+  row-gap: 0.4rem;
+
   .chat-channel-card__header {
-    align-items: flex-start;
+    align-items: stretch;
     flex-direction: column;
-    gap: 0.28rem;
+    gap: 0.35rem;
+    min-width: 0;
   }
 
   .chat-channel-card__name-container {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
   }
+
+  .chat-channel-card__members {
+    color: var(--primary-medium);
+    flex: 0 0 auto;
+    font-size: var(--font-down-2-rem);
+    line-height: 1.2;
+    min-width: max-content;
+    text-decoration: none;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus {
+      color: var(--primary);
+      text-decoration: underline;
+    }
+  }
+}
+
+.dcc-chat-channel-card__title-row {
+  align-items: baseline;
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
 }
 
 .dcc-chat-channel-category {
@@ -43,5 +76,59 @@
   &:focus {
     color: var(--primary);
     text-decoration: none;
+  }
+}
+
+.dcc-chat-category-filter {
+  flex: 0 1 15rem;
+  min-width: 11rem;
+}
+
+.dcc-chat-category-filter__select {
+  appearance: auto;
+  background: var(--secondary);
+  border: 1px solid var(--primary-low-mid);
+  border-radius: var(--d-border-radius);
+  color: var(--primary);
+  font: inherit;
+  min-height: 2.3rem;
+  padding: 0.35rem 0.5rem;
+  width: 100%;
+
+  &:focus {
+    outline: 2px solid var(--tertiary);
+    outline-offset: 1px;
+  }
+}
+
+.dcc-chat-category-filter-empty {
+  color: var(--primary-medium);
+  padding: 1rem 0;
+}
+
+.chat-browse-view__actions {
+  gap: 0.75rem;
+
+  .c-drawer-routes.--browse &,
+  .chat-drawer & {
+    .dcc-chat-category-filter {
+      flex-basis: auto;
+      width: 100%;
+    }
+  }
+}
+
+.c-drawer-routes.--browse,
+.chat-drawer {
+  .chat-browse-view__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .dcc-chat-category-filter {
+    flex-basis: auto;
+    margin-top: 1rem;
+    width: 100%;
   }
 }
