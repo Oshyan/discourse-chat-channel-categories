@@ -2,7 +2,7 @@
 
 # name: discourse-chat-channel-categories
 # about: Shows category context on Discourse chat channel browser cards
-# version: 0.2.1
+# version: 0.3.0
 # authors: EdgeTech
 # url: https://github.com/Oshyan/discourse-chat-channel-categories
 # required_version: 3.0.0

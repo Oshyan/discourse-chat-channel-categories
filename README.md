@@ -1,15 +1,17 @@
 # Discourse Chat Channel Categories
 
-`discourse-chat-channel-categories` adds category context to the existing Discourse chat channel browser. It decorates channel browser cards with a compact category chip using category data already present in the chat channel API payload.
+`discourse-chat-channel-categories` adds category context to the existing Discourse chat channel browser. It decorates channel browser cards with a compact category label using category data already present in Discourse chat and site category data.
 
 ## Behavior
 
-- Adds a category chip to category-backed chat channel cards in `/chat/browse`.
-- Adds a category dropdown for filtering the currently rendered browser cards.
-- Moves the member count into the channel title row to reduce vertical card height.
-- Uses the existing `chatable.name`, `chatable.color`, and category URL data from the chat channel model.
+- Adds a compact category label to category-backed chat channel cards in `/chat/browse`.
+- Shows parent category context for subcategories, for example `Edge Esmeralda 2025 / Housing`.
+- Adds a category dropdown backed by a lightweight chat-channel index request so options do not depend on scroll position.
+- Uses Discourse's native infinite loader on demand when a selected category has not rendered yet.
+- Moves the member count and channel action into the channel title row to reduce vertical card height.
+- Uses existing chat channel and site category data; no server payload fields are added.
 - Updates as the browser paginates, filters, or rerenders cards.
-- Does not add server payload fields or replace chat routes/templates.
+- Does not replace chat routes/templates.
 
 ## Install
 

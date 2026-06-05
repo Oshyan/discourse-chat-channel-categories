@@ -1,13 +1,13 @@
 .chat-channel-card.dcc-chat-channel-card--with-category {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-areas:
-    "title cta"
-    "description description";
-  grid-template-rows: auto 1fr;
-  row-gap: 0.4rem;
+    "title"
+    "description";
+  grid-template-rows: auto;
+  row-gap: 0.45rem;
 
   .chat-channel-card__header {
-    align-items: stretch;
+    align-items: flex-start;
     flex-direction: column;
     gap: 0.35rem;
     min-width: 0;
@@ -20,6 +20,7 @@
   }
 
   .chat-channel-card__members {
+    align-self: center;
     color: var(--primary-medium);
     flex: 0 0 auto;
     font-size: var(--font-down-2-rem);
@@ -34,13 +35,26 @@
       text-decoration: underline;
     }
   }
+
+  .chat-channel-card__cta {
+    align-items: center;
+    align-self: center;
+    display: flex;
+    flex: 0 0 auto;
+    margin-left: 0.2rem;
+  }
+}
+
+.chat-channel-card.dcc-chat-channel-card--category-hidden {
+  display: none;
 }
 
 .dcc-chat-channel-card__title-row {
-  align-items: baseline;
+  align-items: center;
   display: flex;
-  gap: 0.55rem;
+  gap: 0.6rem;
   min-width: 0;
+  width: 100%;
 }
 
 .dcc-chat-channel-category {
@@ -55,10 +69,11 @@
   font-weight: 700;
   gap: 0.3rem;
   line-height: 1;
-  max-width: 100%;
+  max-width: min(100%, 28rem);
   min-height: 1.45rem;
   overflow: hidden;
   padding: 0.22rem 0.5rem;
+  width: auto;
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;

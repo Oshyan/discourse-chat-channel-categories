@@ -7,19 +7,28 @@ const CARD_SELECTOR = ".chat-channel-card[data-channel-id]";
 const HEADER_SELECTOR = ".chat-channel-card__header";
 const NAME_SELECTOR = ".chat-channel-card__name-container";
 const MEMBERS_SELECTOR = ".chat-channel-card__members";
+const CTA_SELECTOR = ".chat-channel-card__cta";
 const BADGE_CLASS = "dcc-chat-channel-category";
 const APPLIED_ATTRIBUTE = "data-dcc-category-channel-id";
 const TITLE_ROW_CLASS = "dcc-chat-channel-card__title-row";
 const FILTER_CLASS = "dcc-chat-category-filter";
 const FILTER_SELECT_CLASS = "dcc-chat-category-filter__select";
 const EMPTY_CLASS = "dcc-chat-category-filter-empty";
+const INDEX_FETCH_LIMIT = 200;
+const LOAD_MORE_ATTEMPTS = 8;
+const LOAD_MORE_DELAY = 650;
 const channelCategories = new Map();
+const channelIdsByCategory = new Map();
+const categories = new Map();
+const indexedCategoryIdsByStatus = new Map();
+const indexRequestsByStatus = new Map();
 
 let chatChannelsManager = null;
 let observer = null;
 let pendingDecorate = false;
 let selectedCategoryId = "";
 let filterId = 0;
+let site = null;
 
 function normalizeColor(color) {
   const value = `${color || ""}`.replace(/^#/, "").trim();
@@ -42,24 +51,63 @@ function categoryUrl(category) {
   return "";
 }
 
+function currentBrowseStatus() {
+  const match = location.pathname.match(/\/chat\/browse\/(all|open|closed)/);
+  return match?.[1] || "all";
+}
+
+function rememberCategory(category, fallbackUrl = "") {
+  if (!category) {
+    return null;
+  }
+
+  const id = `${category.id || category.category_id || ""}`;
+  const existing = categories.get(id) || {};
+  const name = category.name || category.displayName || existing.name;
+
+  if (!id || !name) {
+    return null;
+  }
+
+  const parentId =
+    category.parent_category_id || category.parentCategoryId || existing.parentId;
+
+  const record = {
+    id,
+    name,
+    color: normalizeColor(category.color) || existing.color || "",
+    parentId: parentId ? `${parentId}` : "",
+    url: fallbackUrl || category.url || existing.url || categoryUrl(category),
+  };
+
+  categories.set(id, record);
+  return record;
+}
+
+function rememberSiteCategories() {
+  const siteCategories = site?.categories || site?.categoriesList || [];
+  siteCategories.forEach((category) => rememberCategory(category));
+}
+
+function categoryLabel(category) {
+  const record = categories.get(`${category?.id}`) || category;
+  const parent = record?.parentId ? categories.get(`${record.parentId}`) : null;
+
+  if (parent?.name && parent.id !== record.id) {
+    return `${parent.name} / ${record.name}`;
+  }
+
+  return record?.name || "";
+}
+
 function readCategory(channel) {
   if (!channel || `${channel.chatableType || channel.chatable_type}` !== "Category") {
     return null;
   }
 
-  const chatable = channel.chatable;
-  const name = chatable?.name || chatable?.displayName;
+  rememberSiteCategories();
 
-  if (!name) {
-    return null;
-  }
-
-  return {
-    id: `${chatable.id || channel.chatableId || channel.chatable_id || name}`,
-    name,
-    color: normalizeColor(chatable.color),
-    url: channel.chatableUrl || channel.chatable_url || categoryUrl(chatable),
-  };
+  return rememberCategory(channel.chatable, channel.chatableUrl || channel.chatable_url);
 }
 
 function rememberChannelCategory(channel) {
@@ -70,45 +118,107 @@ function rememberChannelCategory(channel) {
   }
 
   channelCategories.set(`${channel.id}`, category);
+
+  if (!channelIdsByCategory.has(category.id)) {
+    channelIdsByCategory.set(category.id, new Set());
+  }
+  channelIdsByCategory.get(category.id).add(`${channel.id}`);
 }
 
 function rememberLoadedChannelCategories() {
+  rememberSiteCategories();
   chatChannelsManager?.channels?.forEach(rememberChannelCategory);
 }
 
 function sortedCategories() {
   rememberLoadedChannelCategories();
 
-  return Array.from(
-    new Map(
-      Array.from(channelCategories.values()).map((category) => [
-        category.id,
-        category,
-      ])
-    ).values()
-  ).sort((a, b) => a.name.localeCompare(b.name));
+  const statusCategoryIds = indexedCategoryIdsByStatus.get(currentBrowseStatus());
+  const categoryIds = statusCategoryIds?.size
+    ? Array.from(statusCategoryIds)
+    : Array.from(new Set(Array.from(channelCategories.values()).map((category) => category.id)));
+
+  return categoryIds
+    .map((id) => categories.get(`${id}`))
+    .filter(Boolean)
+    .sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b)));
 }
 
-function sortedCategoriesForView(view) {
-  const renderedCategoryIds = new Set(
-    Array.from(view.querySelectorAll(CARD_SELECTOR))
-      .map((card) => channelCategories.get(`${card.dataset.channelId}`)?.id)
-      .filter(Boolean)
-  );
-
-  if (renderedCategoryIds.size === 0) {
-    return sortedCategories();
+async function indexChannelCategories() {
+  const status = currentBrowseStatus();
+  if (indexRequestsByStatus.has(status)) {
+    return indexRequestsByStatus.get(status);
   }
 
-  return sortedCategories().filter((category) =>
-    renderedCategoryIds.has(category.id)
+  if (indexedCategoryIdsByStatus.has(status)) {
+    return indexedCategoryIdsByStatus.get(status);
+  }
+
+  rememberLoadedChannelCategories();
+  const loadedCategoryIds = new Set(
+    Array.from(channelCategories.values()).map((category) => category.id)
   );
+
+  if (loadedCategoryIds.size > 1) {
+    indexedCategoryIdsByStatus.set(status, loadedCategoryIds);
+    syncCategoryFilters();
+    return loadedCategoryIds;
+  }
+
+  const params = new URLSearchParams({
+    limit: `${INDEX_FETCH_LIMIT}`,
+    filter: "",
+    status,
+  });
+
+  const request = fetch(`/chat/api/channels?${params}`, {
+    headers: { accept: "application/json" },
+  })
+    .then((response) => {
+      if (!response.ok) {
+        const error = new Error(`Chat channel index failed with ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+
+      return response.json();
+    })
+    .then((json) => {
+      const statusCategoryIds = new Set();
+
+      (json.channels || []).forEach((channel) => {
+        rememberChannelCategory(channel);
+        const category = channelCategories.get(`${channel.id}`);
+
+        if (category) {
+          statusCategoryIds.add(category.id);
+        }
+      });
+
+      indexedCategoryIdsByStatus.set(status, statusCategoryIds);
+      syncCategoryFilters();
+      return statusCategoryIds;
+    })
+    .catch((error) => {
+      if (error?.status === 429) {
+        setTimeout(() => indexChannelCategories(), 8000);
+      }
+
+      return null;
+    })
+    .finally(() => {
+      indexRequestsByStatus.delete(status);
+    });
+
+  indexRequestsByStatus.set(status, request);
+  return request;
 }
 
 function updateBadgeElement(badge, category) {
-  badge.textContent = category.name;
-  badge.title = `Category: ${category.name}`;
-  badge.setAttribute("aria-label", `Category: ${category.name}`);
+  const label = categoryLabel(category);
+  badge.textContent = label;
+  badge.title = `Category: ${label}`;
+  badge.setAttribute("aria-label", `Category: ${label}`);
 
   if (category.color) {
     badge.style.setProperty("--dcc-chat-category-color", category.color);
@@ -157,6 +267,11 @@ function ensureTitleRow(card, header) {
   if (members && members.parentElement !== titleRow) {
     titleRow.appendChild(members);
   }
+
+  const cta = card.querySelector(`:scope > ${CTA_SELECTOR}`);
+  if (cta && cta.parentElement !== titleRow) {
+    titleRow.appendChild(cta);
+  }
 }
 
 function decorateCard(card) {
@@ -187,9 +302,9 @@ function decorateCard(card) {
   card.dataset.dccCategoryId = category.id;
 }
 
-function categoryFilterOptions(select, view) {
+function categoryFilterOptions(select) {
   const previousValue = select.value || selectedCategoryId;
-  const categories = view ? sortedCategoriesForView(view) : sortedCategories();
+  const options = sortedCategories();
 
   select.replaceChildren();
 
@@ -198,14 +313,14 @@ function categoryFilterOptions(select, view) {
   allOption.textContent = "All categories";
   select.appendChild(allOption);
 
-  categories.forEach((category) => {
+  options.forEach((category) => {
     const option = document.createElement("option");
     option.value = category.id;
-    option.textContent = category.name;
+    option.textContent = categoryLabel(category);
     select.appendChild(option);
   });
 
-  if (categories.some((category) => category.id === previousValue)) {
+  if (options.some((category) => category.id === previousValue)) {
     select.value = previousValue;
     return;
   }
@@ -221,7 +336,7 @@ function syncCategoryFilters() {
   document
     .querySelectorAll(`.${FILTER_SELECT_CLASS}`)
     .forEach((select) => {
-      categoryFilterOptions(select, select.closest(VIEW_SELECTOR));
+      categoryFilterOptions(select);
       select.value = selectedCategoryId;
     });
 }
@@ -243,11 +358,11 @@ function createCategoryFilter(view) {
   select.addEventListener("change", (event) => {
     selectedCategoryId = event.target.value;
     syncCategoryFilters();
-    applyCategoryFilter();
+    applyCategoryFilterAfterLoading();
   });
 
   wrapper.append(label, select);
-  categoryFilterOptions(select, view);
+  categoryFilterOptions(select);
   return wrapper;
 }
 
@@ -263,7 +378,7 @@ function ensureCategoryFilter(view) {
     const nativeFilter = actions.querySelector(".filter-input-container");
     actions.insertBefore(filter, nativeFilter || null);
   } else {
-    categoryFilterOptions(filter.querySelector(`.${FILTER_SELECT_CLASS}`), view);
+    categoryFilterOptions(filter.querySelector(`.${FILTER_SELECT_CLASS}`));
   }
 }
 
@@ -297,6 +412,15 @@ function updateEmptyState(view, visibleCount, totalCount) {
   }
 }
 
+function clearCategoryFilter(view) {
+  view.querySelectorAll(CARD_SELECTOR).forEach((card) => {
+    card.hidden = false;
+    card.classList.remove("dcc-chat-channel-card--category-hidden");
+  });
+
+  view.querySelector(`.${EMPTY_CLASS}`)?.remove();
+}
+
 function applyCategoryFilter(root = document) {
   const views = [];
 
@@ -325,12 +449,94 @@ function applyCategoryFilter(root = document) {
   });
 }
 
-function decorateCards(root = document) {
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function scrollViewToLoadMore(view) {
+  const scrollRoot = document.scrollingElement || document.documentElement;
+  scrollRoot.scrollTop = scrollRoot.scrollHeight;
+
+  let node = view;
+  while (node && node !== document.body) {
+    if (node.scrollHeight > node.clientHeight) {
+      node.scrollTop = node.scrollHeight;
+    }
+
+    node = node.parentElement;
+  }
+}
+
+async function ensureSelectedCategoryIsRendered(view) {
+  if (!selectedCategoryId) {
+    return;
+  }
+
+  clearCategoryFilter(view);
+  decorateCards(view, { skipApply: true, skipIndex: true });
+
+  const expectedCount = channelIdsByCategory.get(selectedCategoryId)?.size || 0;
+  const initialMatchCount = view.querySelectorAll(
+    `${CARD_SELECTOR}[data-dcc-category-id="${selectedCategoryId}"]`
+  ).length;
+
+  if (initialMatchCount > 0) {
+    return;
+  }
+
+  for (let attempt = 0; attempt < LOAD_MORE_ATTEMPTS; attempt += 1) {
+    decorateCards(view, { skipApply: true, skipIndex: true });
+
+    const matchingCards = view.querySelectorAll(
+      `${CARD_SELECTOR}[data-dcc-category-id="${selectedCategoryId}"]`
+    );
+    if (
+      matchingCards.length > 0 &&
+      (!expectedCount || matchingCards.length >= expectedCount)
+    ) {
+      return;
+    }
+
+    const previousCount = view.querySelectorAll(CARD_SELECTOR).length;
+    if (previousCount === 0) {
+      return;
+    }
+
+    scrollViewToLoadMore(view);
+    await delay(LOAD_MORE_DELAY);
+
+    if (view.querySelectorAll(CARD_SELECTOR).length <= previousCount && attempt > 1) {
+      return;
+    }
+  }
+}
+
+async function applyCategoryFilterAfterLoading(root = document) {
+  const views = [];
+
+  if (root.matches?.(VIEW_SELECTOR)) {
+    views.push(root);
+  }
+
+  root.querySelectorAll?.(VIEW_SELECTOR).forEach((view) => views.push(view));
+
+  await Promise.all(views.map((view) => ensureSelectedCategoryIsRendered(view)));
+  applyCategoryFilter(root);
+}
+
+function decorateCards(root = document, options = {}) {
   rememberLoadedChannelCategories();
   ensureCategoryFilters(root);
   root.querySelectorAll?.(CARD_SELECTOR).forEach(decorateCard);
   syncCategoryFilters();
-  applyCategoryFilter(root);
+
+  if (!options.skipApply) {
+    applyCategoryFilter(root);
+  }
+
+  if (!options.skipIndex) {
+    indexChannelCategories();
+  }
 }
 
 function scheduleDecorate(root = document) {
@@ -376,6 +582,9 @@ function observeCards() {
 
 export default apiInitializer((api) => {
   chatChannelsManager = api.container.lookup("service:chat-channels-manager");
+  site =
+    api.container.lookup("service:site") ||
+    window.require?.("discourse/models/site")?.default?.current?.();
 
   api.onPageChange(() => {
     observeCards();
