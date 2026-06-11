@@ -45,10 +45,6 @@
   }
 }
 
-.chat-channel-card.dcc-chat-channel-card--category-hidden {
-  display: none;
-}
-
 .dcc-chat-channel-card__title-row {
   align-items: center;
   display: flex;
@@ -114,11 +110,6 @@
     outline: 2px solid var(--tertiary);
     outline-offset: 1px;
   }
-}
-
-.dcc-chat-category-filter-empty {
-  color: var(--primary-medium);
-  padding: 1rem 0;
 }
 
 .chat-browse-view__actions {
