@@ -448,36 +448,58 @@ function patchBrowseChannels() {
     return;
   }
 
-  browseChannelsPatched = true;
+  if (!BrowseChannels?.prototype) {
+    // Chat internals are private API. If core moves this component, fail closed
+    // instead of preventing Discourse from booting.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[discourse-chat-channel-categories] BrowseChannels component unavailable; category filtering disabled"
+    );
+    return;
+  }
 
-  Object.defineProperty(BrowseChannels.prototype, "channelsCollection", {
-    configurable: true,
-    get() {
-      const ownerService =
-        getOwner(this)?.lookup("service:dcc-chat-channel-categories") || categoryService;
-      const selectedId = ownerService?.selectedCategoryId || "";
-      const params = patchedCollectionParams(this);
-      const key = JSON.stringify({
-        filter: params.filter || "",
-        status: params.status || "all",
-        categoryId: selectedId,
-      });
-      let cached = browseCollections.get(this);
+  try {
+    Object.defineProperty(BrowseChannels.prototype, "channelsCollection", {
+      configurable: true,
+      get() {
+        const ownerService =
+          getOwner(this)?.lookup("service:dcc-chat-channel-categories") ||
+          categoryService;
+        const selectedId = ownerService?.selectedCategoryId || "";
+        const params = patchedCollectionParams(this);
+        const key = JSON.stringify({
+          filter: params.filter || "",
+          status: params.status || "all",
+          categoryId: selectedId,
+        });
+        let cached = browseCollections.get(this);
 
-      if (!cached || cached.key !== key) {
-        const collection = this.chatApi.channels(params);
-        cached = { key, collection };
-        browseCollections.set(this, cached);
-        schedule("afterRender", () => collection.load({ limit: COLLECTION_LIMIT }));
-      }
+        if (!cached || cached.key !== key) {
+          const collection = this.chatApi.channels(params);
+          cached = { key, collection };
+          browseCollections.set(this, cached);
+          schedule("afterRender", () => collection.load({ limit: COLLECTION_LIMIT }));
+        }
 
-      return cached.collection;
-    },
-  });
+        return cached.collection;
+      },
+    });
 
-  BrowseChannels.prototype.debouncedLoad = function () {
-    this.channelsCollection.load({ limit: COLLECTION_LIMIT });
-  };
+    Object.defineProperty(BrowseChannels.prototype, "debouncedLoad", {
+      configurable: true,
+      value() {
+        this.channelsCollection.load({ limit: COLLECTION_LIMIT });
+      },
+    });
+
+    browseChannelsPatched = true;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[discourse-chat-channel-categories] Unable to patch BrowseChannels; category filtering disabled",
+      error
+    );
+  }
 }
 
 export default apiInitializer((api) => {
