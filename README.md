@@ -13,6 +13,57 @@
 - Updates as the browser paginates, filters, or rerenders cards.
 - Patches the existing chat browser collection path while preserving Discourse's routes, tabs, card component, membership buttons, and infinite loader.
 
+## Category Options API
+
+The plugin exposes a lightweight endpoint for consumers that need the list of visible chat-backed categories:
+
+```text
+GET /chat-channel-categories/categories.json?status=all
+```
+
+### Auth
+
+The endpoint inherits Discourse chat API permissions. The caller must be logged in and allowed to use chat.
+
+### Query params
+
+- `status`: optional chat channel status filter. Supported values are `all`, `open`, `closed`, and `archived`. Missing or invalid values are treated as `all`.
+
+### Response
+
+```json
+{
+  "categories": [
+    {
+      "id": 12,
+      "name": "Housing",
+      "slug": "housing",
+      "color": "0088CC",
+      "parent_category_id": 4,
+      "url": "/c/edge-esmeralda-2025/housing/12",
+      "parent": {
+        "id": 4,
+        "name": "Edge Esmeralda 2025",
+        "slug": "edge-esmeralda-2025",
+        "color": "0088CC",
+        "parent_category_id": null,
+        "url": "/c/edge-esmeralda-2025/4"
+      }
+    }
+  ]
+}
+```
+
+Only categories for chat channels visible to the current user are returned. This endpoint is for category option metadata only; use Discourse's native `/chat/api/channels` endpoint for channel results.
+
+When applying a selected category to the browser, the plugin calls the native channel API with:
+
+```text
+chatable_id=<category_id>
+chatable_type=Category
+include_subcategories=true
+```
+
 ## Install
 
 Add the plugin to a Discourse container like any other plugin and rebuild:
