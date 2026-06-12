@@ -13,6 +13,8 @@
 - Updates as the browser paginates, filters, or rerenders cards.
 - Patches the existing chat browser collection path while preserving Discourse's routes, tabs, card component, membership buttons, and infinite loader.
 
+See [docs/maintenance.md](docs/maintenance.md) for upgrade risks and the Discourse update smoke checklist.
+
 ## Category Options API
 
 The plugin exposes a lightweight endpoint for consumers that need the list of visible chat-backed categories:
