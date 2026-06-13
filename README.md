@@ -66,6 +66,47 @@ chatable_type=Category
 include_subcategories=true
 ```
 
+## Active Channels API
+
+A bounded endpoint for surfaces (like a homepage widget) that need a short list of recently active channels. Discourse's native `/chat/api/channels` sorts alphabetically and cannot order by activity.
+
+```text
+GET /chat-channel-categories/active-channels.json?limit=5
+```
+
+### Auth
+
+Inherits Discourse chat API permissions (logged in + allowed to chat). Channel visibility is scoped with `Chat::ChannelFetcher.generate_allowed_channel_ids_sql`, with DM channels excluded.
+
+### Query params
+
+- `limit`: optional, defaults to 5, clamped to 1..8.
+
+### Response
+
+```json
+{
+  "channels": [
+    {
+      "id": 31,
+      "name": "Asks & Offers",
+      "slug": "asks-offers",
+      "url": "/chat/c/asks-offers/31",
+      "member_count": 388,
+      "last_activity_at": "2026-06-12T17:21:09Z",
+      "category": {
+        "id": 5,
+        "name": "Edge Esmeralda 2026",
+        "color": "0088CC",
+        "parent": null
+      }
+    }
+  ]
+}
+```
+
+Only open category-backed channels with at least one message are returned, ordered by most recent message. Display fields only; message bodies are never included.
+
 ## Install
 
 Add the plugin to a Discourse container like any other plugin and rebuild:
